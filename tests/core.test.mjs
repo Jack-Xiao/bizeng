@@ -77,3 +77,26 @@ test('buildNewQueue: 当前 day 学完则推进到下一个有新词的 day', ()
   assert.equal(r.day, 3);
   assert.equal(r.queue[0].id, 'b');
 });
+
+test('pickChallenges: 最多 3 题，含 1 道升级题（有匹配时），排除已做', () => {
+  const now = Date.now();
+  const cards = [
+    { id: '1', en: 'scope creep', reps: 2, lastReviewed: now },
+    { id: '2', en: 'circle back', reps: 1, lastReviewed: now },
+    { id: '3', en: 'sync up', reps: 1, lastReviewed: now - 86400000 },
+    { id: '4', en: 'FYI', reps: 0, lastReviewed: null },
+  ];
+  const up = { 'scope creep': 'The customer keeps adding new requirements.' };
+  const qs = core.pickChallenges(cards, up, []);
+  assert.ok(qs.length <= 3);
+  const upgrade = qs.filter(q => q.type === 'upgrade');
+  assert.equal(upgrade.length, 1);
+  assert.equal(upgrade[0].card.en, 'scope creep');
+  assert.ok(!qs.some(q => q.card.id === '4'));
+  const qs2 = core.pickChallenges(cards, up, ['1']);
+  assert.ok(!qs2.some(q => q.card.id === '1'));
+});
+
+test('pickChallenges: 没学过任何词时返回空数组', () => {
+  assert.deepEqual(core.pickChallenges([{ id: '1', en: 'x', reps: 0 }], {}, []), []);
+});
