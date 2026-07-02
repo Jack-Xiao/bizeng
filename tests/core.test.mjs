@@ -25,3 +25,37 @@ test('谓词: 新卡 isNew，到期 isDue', () => {
   c.due = Date.now() - 1000;
   assert.ok(core.isDue(c)); assert.ok(!core.isNew(c));
 });
+
+test('掌握: 实战用过 2 次 → 掌握', () => {
+  const c = { ...freshCard(), usedReal: 2, produced: 0 };
+  assert.ok(core.isMastered(c));
+});
+
+test('掌握: 造过句 + reps>=4 且无 lapse → 掌握', () => {
+  const c = { ...freshCard(), reps: 4, produced: 1, usedReal: 0 };
+  assert.ok(core.isMastered(c));
+});
+
+test('掌握: 仅靠复习（reps>=4 无产出）→ 不算掌握', () => {
+  const c = { ...freshCard(), reps: 6, produced: 0, usedReal: 0 };
+  assert.ok(!core.isMastered(c));
+});
+
+test('applyRealUse: 第 1 次实战拉长间隔，第 2 次达到掌握', () => {
+  const c = freshCard();
+  core.schedule(c, 4);
+  const dueBefore = c.due;
+  core.applyRealUse(c);
+  assert.equal(c.usedReal, 1);
+  assert.ok(c.due > dueBefore);
+  core.applyRealUse(c);
+  assert.equal(c.usedReal, 2);
+  assert.ok(core.isMastered(c));
+});
+
+test('applyRating: 掌握后忘了 → usedReal 回炉到 1', () => {
+  const c = { ...freshCard(), usedReal: 2 };
+  core.applyRating(c, 1);
+  assert.equal(c.usedReal, 1);
+  assert.ok(!core.isMastered(c));
+});

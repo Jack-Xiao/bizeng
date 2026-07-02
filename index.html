@@ -124,6 +124,7 @@
   .word-item .meta { font-size: 11px; color: var(--text-faint); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
   .pill.new { background: var(--green-soft); color: var(--green); } .pill.due { background: var(--accent-soft); color: var(--accent); } .pill.mastered { background: #f3f4f6; color: var(--text-soft); } .pill.frozen { background: var(--red-soft); color: var(--red); }
+  .use-btn { border: 1px solid var(--green); color: var(--green); background: var(--green-soft); border-radius: 8px; padding: 2px 8px; font-size: 12px; cursor: pointer; font-family: inherit; }
   .filter-row { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
   .filter-row button { padding: 7px 14px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); font-size: 12px; font-family: inherit; cursor: pointer; white-space: nowrap; color: var(--text-soft); }
   .filter-row button.active { background: var(--text); color: #fff; border-color: var(--text); }
@@ -676,7 +677,7 @@ function nextDaysLabel(card, q){
 function rate(quality){
   const card = session.queue[session.idx];
   const wasNew = isNew(card);
-  schedule(card, quality); save();
+  applyRating(card, quality); save();
   const t = todayStr();
   state.history.push({ date:t, id:card.id, kind: wasNew?'new':'review', q:quality });
   if(state.lastStudyDate !== t){
@@ -828,14 +829,23 @@ function renderLibrary(){
   if(list.length===0){ box.innerHTML='<div class="empty"><div class="ic">🔍</div>没有匹配的词条</div>'; return; }
   box.innerHTML=list.map(c=>{
     let pill='';
-    if(isNew(c))pill='<span class="pill new">未学</span>';
+    if(c.inbox)pill='<span class="pill due">待补全</span>';
+    else if(isNew(c))pill='<span class="pill new">未学</span>';
     else if(isFrozen(c))pill='<span class="pill frozen">反复忘</span>';
     else if(isMastered(c))pill='<span class="pill mastered">已掌握</span>';
     else if(isDue(c))pill='<span class="pill due">待复习</span>';
     else pill='<span class="pill mastered">复习中</span>';
     const dueInfo=isNew(c)?'':(isDue(c)?'<span>🔴 今天</span>':'<span>'+daysUntil(c.due)+'天后</span>');
-    return `<div class="word-item"><div class="top"><span class="en">${c.en}</span><span class="zh">${c.zh}</span></div><div class="meta">${pill}${c.scene?'<span>'+c.scene+'</span>':''}${c.day?'<span>Day '+c.day+'</span>':''}${dueInfo}<span>复习 ${c.reps} 次</span></div></div>`;
+    const useBtn = (!isNew(c) && !isMastered(c) && !c.inbox)
+      ? `<button class="use-btn" onclick="markUsed('${c.id}')">✓ 实战用过</button>` : '';
+    return `<div class="word-item"><div class="top"><span class="en">${c.en}</span><span class="zh">${c.zh||'（待补全）'}</span></div><div class="meta">${pill}${c.scene?'<span>'+c.scene+'</span>':''}${c.day?'<span>Day '+c.day+'</span>':''}${dueInfo}<span>复习 ${c.reps} 次</span>${useBtn}</div></div>`;
   }).join('');
+}
+function markUsed(id){
+  const c = state.cards.find(x=>x.id===id); if(!c) return;
+  applyRealUse(c); save();
+  toast(c.usedReal>=2 ? '第 2 次实战，已掌握' : '很好！复习间隔已拉长');
+  renderLibrary();
 }
 function daysUntil(ts){ const d=Math.ceil((ts-Date.now())/86400000); return d<=0?'今天':d; }
 

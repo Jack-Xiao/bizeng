@@ -23,8 +23,21 @@ function schedule(card, quality){
 function isDue(c){ return c.due !== null && c.due <= Date.now(); }
 function isNew(c){ return c.due === null; }
 function isFrozen(c){ return (c.lapse||0) >= 3; }
-function isMastered(c){ return c.reps >= 4 && (c.lapse||0) === 0; }  // Task 3 会重写
+function isMastered(c){
+  if((c.usedReal||0) >= 2) return true;
+  return (c.produced||0) >= 1 && c.reps >= 4 && (c.lapse||0) === 0;
+}
+
+function applyRealUse(card){
+  card.usedReal = (card.usedReal||0) + 1;
+  if(card.usedReal === 1) schedule(card, 5);
+}
+
+function applyRating(card, quality){
+  if(quality < 3 && (card.usedReal||0) >= 2) card.usedReal = 1;
+  schedule(card, quality);
+}
 
 if (typeof module !== 'undefined') module.exports = {
-  schedule, isDue, isNew, isFrozen, isMastered
+  schedule, isDue, isNew, isFrozen, isMastered, applyRealUse, applyRating
 };
