@@ -59,3 +59,21 @@ test('applyRating: 掌握后忘了 → usedReal 回炉到 1', () => {
   assert.equal(c.usedReal, 1);
   assert.ok(!core.isMastered(c));
 });
+
+test('buildNewQueue: 已补全的自定义词优先于课表词，上限 6', () => {
+  const seedCards = Array.from({ length: 8 }, (_, i) => ({ id: 's'+i, en: 'seed'+i, zh: 'x', day: 1, due: null, reps: 0, inbox: false, createdAt: i }));
+  const userCard = { id: 'u1', en: 'my word', zh: '我的词', day: 0, due: null, reps: 0, inbox: false, createdAt: 999 };
+  const inboxCard = { id: 'u2', en: 'raw word', zh: '', day: 0, due: null, reps: 0, inbox: true, createdAt: 998 };
+  const r = core.buildNewQueue([...seedCards, userCard, inboxCard], 1, 6);
+  assert.equal(r.queue.length, 6);
+  assert.equal(r.queue[0].id, 'u1');
+  assert.ok(!r.queue.some(c => c.id === 'u2'));
+});
+
+test('buildNewQueue: 当前 day 学完则推进到下一个有新词的 day', () => {
+  const d1 = { id: 'a', en: 'a', zh: 'x', day: 1, due: Date.now(), reps: 1, inbox: false, createdAt: 1 };
+  const d3 = { id: 'b', en: 'b', zh: 'x', day: 3, due: null, reps: 0, inbox: false, createdAt: 2 };
+  const r = core.buildNewQueue([d1, d3], 1, 6);
+  assert.equal(r.day, 3);
+  assert.equal(r.queue[0].id, 'b');
+});

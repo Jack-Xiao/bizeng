@@ -142,6 +142,14 @@
   .empty .ic { font-size: 40px; margin-bottom: 10px; }
   .settings-row { display: flex; gap: 8px; margin-top: 14px; }
   .settings-row button { flex: 1; padding: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; font-family: inherit; cursor: pointer; color: var(--text-soft); }
+  .quick-add { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .quick-add h3 { font-size: 15px; margin-bottom: 2px; }
+  .quick-add .qa-sub { font-size: 12px; color: var(--text-faint); margin-bottom: 10px; }
+  .quick-add input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 16px; font-family: inherit; margin-bottom: 10px; }
+  .src-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .src-row button { border: 1px solid var(--border); background: var(--bg); border-radius: 20px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text-soft); }
+  .src-row button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .divider { text-align: center; color: var(--text-faint); font-size: 12px; margin: 14px 0; }
   .section-title { font-size: 13px; font-weight: 600; color: var(--text-faint); margin: 22px 0 10px; text-transform: uppercase; letter-spacing: 0.05em; }
   .day-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
   .day-pick button { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; font-family: inherit; cursor: pointer; color: var(--text-soft); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
@@ -223,6 +231,7 @@
       <button data-f="new" onclick="setFilter('new')">未学</button>
       <button data-f="learning" onclick="setFilter('learning')">学习中</button>
       <button data-f="mastered" onclick="setFilter('mastered')">已掌握</button>
+      <button data-f="inbox" onclick="setFilter('inbox')">收件箱</button>
     </div>
     <div id="libList"></div>
   </section>
@@ -230,12 +239,26 @@
   <section class="view" id="view-add">
     <div class="lib-head"><h2>添加词条</h2></div>
     <p class="sub" style="margin-bottom:18px;">添加你工作中遇到的生词，效果远好于通用词表。</p>
+    <div class="quick-add">
+      <h3>快速收件箱</h3>
+      <p class="qa-sub">10 秒收词：只填英文，来源点一下，晚上再补全</p>
+      <input id="qEn" placeholder="如 table this discussion" autocapitalize="off">
+      <div class="src-row" id="srcRow">
+        <button data-src="邮件" onclick="pickSrc(this)">邮件</button>
+        <button data-src="会议" onclick="pickSrc(this)">会议</button>
+        <button data-src="文档" onclick="pickSrc(this)">文档</button>
+        <button data-src="Bob" onclick="pickSrc(this)">Bob</button>
+        <button data-src="自己想到" onclick="pickSrc(this)">自己想到</button>
+      </div>
+      <button class="save-btn" onclick="quickAdd()">存入收件箱</button>
+    </div>
+    <div class="divider">- 或完整添加 / 补全 -</div>
     <div class="form-group"><label>英文表达 *</label><input id="fEn" placeholder="如 loop in"></div>
     <div class="form-group"><label>中文释义 *</label><input id="fZh" placeholder="如 把某人拉进讨论/邮件"></div>
     <div class="form-group"><label>适用场景</label><input id="fScene" placeholder="如 协作 / 邮件"></div>
     <div class="form-group"><label>例句</label><textarea id="fExample" placeholder="Let me loop in Sarah so she's in the loop."></textarea></div>
     <div class="form-group"><label>备注（写 nuance）</label><textarea id="fNote" placeholder="比 CC someone 更口语，强调把人'拉进来'参与"></textarea></div>
-    <button class="save-btn" onclick="addWord()">保存词条</button>
+    <button class="save-btn" id="saveBtn" onclick="addWord()">保存词条</button>
     <div class="settings-row">
       <button onclick="exportData()">导出备份</button>
       <button onclick="document.getElementById('importFile').click()">导入备份</button>
@@ -498,6 +521,8 @@ let state = {
 };
 let session = null;
 let currentFilter = 'all';
+let qSrc = '';
+let editingId = null;
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function makeCard(w, i){
@@ -560,14 +585,9 @@ function save(){ localStorage.setItem(DB_KEY, JSON.stringify(state)); }
 function getDueCards(){ return state.cards.filter(isDue).sort((a,b)=>a.due-b.due); }
 function dayCards(day){ return state.cards.filter(c=>c.day===day); }
 function getNewCards(){
-  // 当前 day 中未学的；若当前 day 全部学完则推进 currentDay
-  let day = state.currentDay;
-  let fresh = dayCards(day).filter(isNew);
-  while(fresh.length === 0 && day < 30){
-    day++; fresh = dayCards(day).filter(isNew);
-  }
-  if(day !== state.currentDay){ state.currentDay = day; save(); }
-  return fresh.slice(0, 6);
+  const r = buildNewQueue(state.cards, state.currentDay, 6);
+  if(r.day !== state.currentDay){ state.currentDay = r.day; save(); }
+  return r.queue;
 }
 function advanceDayIfNeeded(){
   // 当前 day 的 6 个都学过了 → 推进到下一个还有未学的 day
@@ -753,6 +773,8 @@ function renderHome(){
   setMode(state.studyMode);
   if(state.streak>0){ document.getElementById('streakBadge').style.display='flex'; document.getElementById('streakNum').textContent=state.streak; }
   else document.getElementById('streakBadge').style.display='none';
+  const inboxN = state.cards.filter(c=>c.inbox).length;
+  if(inboxN>0) document.getElementById('homeSub').textContent += `　收件箱 ${inboxN} 条待补全`;
   renderDayCard(); renderHeatmap(); renderMastery(); renderDayPick();
 }
 function renderDayCard(){
@@ -823,6 +845,7 @@ function renderLibrary(){
   else if(currentFilter==='new')list=list.filter(isNew);
   else if(currentFilter==='learning')list=list.filter(c=>!isNew(c)&&!isMastered(c)&&!isFrozen(c));
   else if(currentFilter==='mastered')list=list.filter(isMastered);
+  else if(currentFilter==='inbox')list=list.filter(c=>c.inbox);
   if(q)list=list.filter(c=>c.en.toLowerCase().includes(q)||c.zh.toLowerCase().includes(q));
   list.sort((a,b)=>(a.due||Infinity)-(b.due||Infinity) || (a.day-b.day) || a.en.localeCompare(b.en));
   const box=document.getElementById('libList');
@@ -836,8 +859,9 @@ function renderLibrary(){
     else if(isDue(c))pill='<span class="pill due">待复习</span>';
     else pill='<span class="pill mastered">复习中</span>';
     const dueInfo=isNew(c)?'':(isDue(c)?'<span>🔴 今天</span>':'<span>'+daysUntil(c.due)+'天后</span>');
-    const useBtn = (!isNew(c) && !isMastered(c) && !c.inbox)
-      ? `<button class="use-btn" onclick="markUsed('${c.id}')">✓ 实战用过</button>` : '';
+    const useBtn = c.inbox
+      ? `<button class="use-btn" onclick="editCard('${c.id}')">补全</button>`
+      : ((!isNew(c) && !isMastered(c)) ? `<button class="use-btn" onclick="markUsed('${c.id}')">✓ 实战用过</button>` : '');
     return `<div class="word-item"><div class="top"><span class="en">${c.en}</span><span class="zh">${c.zh||'（待补全）'}</span></div><div class="meta">${pill}${c.scene?'<span>'+c.scene+'</span>':''}${c.day?'<span>Day '+c.day+'</span>':''}${dueInfo}<span>复习 ${c.reps} 次</span>${useBtn}</div></div>`;
   }).join('');
 }
@@ -850,22 +874,65 @@ function markUsed(id){
 function daysUntil(ts){ const d=Math.ceil((ts-Date.now())/86400000); return d<=0?'今天':d; }
 
 /* ============ 添加 / 导入导出 / 重置 ============ */
+function pickSrc(btn){
+  qSrc = btn.dataset.src;
+  document.querySelectorAll('#srcRow button').forEach(b=>b.classList.toggle('active', b===btn));
+}
+function quickAdd(){
+  const en = document.getElementById('qEn').value.trim();
+  if(!en){ toast('填一下英文表达'); return; }
+  if(state.cards.some(c=>c.en.toLowerCase()===en.toLowerCase())){ toast('词库里已有这个表达'); return; }
+  state.cards.push({ id:'u'+Date.now(), en, zh:'', scene:'', day:0, topic:'自定义',
+    example:'', note:'', source:qSrc, inbox:true, createdAt:Date.now(),
+    reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0, produced:0, usedReal:0 });
+  save();
+  document.getElementById('qEn').value=''; qSrc='';
+  document.querySelectorAll('#srcRow button').forEach(b=>b.classList.remove('active'));
+  toast('已进收件箱：'+en);
+  renderHome();
+}
+function editCard(id){
+  const c = state.cards.find(x=>x.id===id); if(!c) return;
+  editingId = id;
+  switchView('add');
+  document.getElementById('fEn').value = c.en;
+  document.getElementById('fZh').value = c.zh;
+  document.getElementById('fScene').value = c.scene||'';
+  document.getElementById('fExample').value = c.example||'';
+  document.getElementById('fNote').value = c.note||'';
+  document.getElementById('saveBtn').textContent = '保存补全';
+  document.getElementById('fZh').focus();
+}
 function addWord(){
   const en=document.getElementById('fEn').value.trim();
   const zh=document.getElementById('fZh').value.trim();
   if(!en||!zh){ toast('英文和中文必填'); return; }
-  state.cards.push({
-    id:'u'+Date.now(), en, zh,
-    scene:document.getElementById('fScene').value.trim()||'自定义',
-    day:0, topic:'自定义',
-    example:document.getElementById('fExample').value.trim(),
-    note:document.getElementById('fNote').value.trim(),
-    createdAt:Date.now(), reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0,
-    produced:0, usedReal:0, inbox:false, source:''
-  });
+  if(editingId){
+    const c = state.cards.find(x=>x.id===editingId);
+    if(c){
+      Object.assign(c, { en, zh,
+        scene:document.getElementById('fScene').value.trim()||c.source||'自定义',
+        example:document.getElementById('fExample').value.trim(),
+        note:document.getElementById('fNote').value.trim(), inbox:false });
+    }
+    editingId=null; document.getElementById('saveBtn').textContent='保存词条';
+    toast('已补全：'+en+'，将优先进入新词队列');
+  } else {
+    state.cards.push({
+      id:'u'+Date.now(), en, zh,
+      scene:document.getElementById('fScene').value.trim()||'自定义',
+      day:0, topic:'自定义',
+      example:document.getElementById('fExample').value.trim(),
+      note:document.getElementById('fNote').value.trim(),
+      createdAt:Date.now(), reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0,
+      produced:0, usedReal:0, inbox:false, source:''
+    });
+    toast('已添加：'+en);
+  }
   save();
   ['fEn','fZh','fScene','fExample','fNote'].forEach(id=>document.getElementById(id).value='');
-  toast('已添加：'+en); document.getElementById('fEn').focus();
+  document.getElementById('fEn').focus();
+  renderHome();
 }
 function exportData(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});

@@ -38,6 +38,20 @@ function applyRating(card, quality){
   schedule(card, quality);
 }
 
+function buildNewQueue(cards, currentDay, cap){
+  cap = cap || 6;
+  const userFresh = cards
+    .filter(c => c.day === 0 && !c.inbox && c.zh && isNew(c))
+    .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  let day = currentDay;
+  let fresh = cards.filter(c => c.day === day && isNew(c));
+  while(fresh.length === 0 && day < 30){
+    day++;
+    fresh = cards.filter(c => c.day === day && isNew(c));
+  }
+  return { day, queue: userFresh.concat(fresh).slice(0, cap) };
+}
+
 if (typeof module !== 'undefined') module.exports = {
-  schedule, isDue, isNew, isFrozen, isMastered, applyRealUse, applyRating
+  schedule, isDue, isNew, isFrozen, isMastered, applyRealUse, applyRating, buildNewQueue
 };
