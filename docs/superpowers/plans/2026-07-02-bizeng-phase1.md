@@ -110,7 +110,7 @@ test('谓词: 新卡 isNew，到期 isDue', () => {
 
 - [ ] **Step 3: 跑测试确认通过**
 
-Run: `cd /Users/xiaojiang/Documents/背单词 && node --test tests/`
+Run: `cd /Users/xiaojiang/Documents/背单词 && node --test`
 Expected: 3 pass
 
 - [ ] **Step 4: index.html 接入 core.js，删除重复定义**
@@ -276,7 +276,7 @@ test('applyRating: 掌握后忘了 → usedReal 回炉到 1', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/`
+Run: `node --test`
 Expected: 新增 5 个测试 FAIL（isMastered 旧逻辑 / applyRealUse、applyRating 未定义）
 
 - [ ] **Step 3: 实现（core.js 中替换 isMastered，新增两函数）**
@@ -308,7 +308,7 @@ module.exports 追加 `applyRealUse, applyRating`。
 
 - [ ] **Step 4: 跑测试确认全部通过**
 
-Run: `node --test tests/`
+Run: `node --test`
 Expected: 全部 pass
 
 - [ ] **Step 5: index.html 接线**
@@ -393,7 +393,7 @@ test('buildNewQueue: 当前 day 学完则推进到下一个有新词的 day', ()
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/`
+Run: `node --test`
 Expected: buildNewQueue is not a function
 
 - [ ] **Step 3: 实现 buildNewQueue（core.js）**
@@ -420,7 +420,7 @@ module.exports 追加 `buildNewQueue`。
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `node --test tests/`  Expected: 全部 pass
+Run: `node --test`  Expected: 全部 pass
 
 - [ ] **Step 5: index.html — getNewCards 改用 buildNewQueue**
 
@@ -622,7 +622,7 @@ test('pickChallenges: 没学过任何词时返回空数组', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `node --test tests/`  Expected: pickChallenges is not a function
+Run: `node --test`  Expected: pickChallenges is not a function
 
 - [ ] **Step 3: 实现 pickChallenges + UPGRADE（core.js）**
 
@@ -687,7 +687,7 @@ module.exports 追加 `pickChallenges, UPGRADE`。
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `node --test tests/`  Expected: 全部 pass
+Run: `node --test`  Expected: 全部 pass
 
 - [ ] **Step 5: Commit**
 
