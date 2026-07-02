@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.xiaojiang.bizeng-reminder</string>
+
+    <!-- 每天 8:00 触发 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 弹出通知 + 自动打开背单词网页 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/osascript</string>
+        <string>-e</string>
+        <string>display notification "该背单词了！今天的 6 个表达 + 到期复习在等你。" with title "📖 商务英语 · Day 训练" sound name "Glass"</string>
+        <string>-e</string>
+        <string>do shell script "open /Users/xiaojiang/Documents/背单词/index.html"</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
