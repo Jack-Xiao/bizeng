@@ -150,6 +150,11 @@
   .src-row button { border: 1px solid var(--border); background: var(--bg); border-radius: 20px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text-soft); }
   .src-row button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .divider { text-align: center; color: var(--text-faint); font-size: 12px; margin: 14px 0; }
+  .ch-input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 16px; font-family: inherit; margin-top: 12px; resize: vertical; }
+  .ch-input:disabled { background: var(--bg); color: var(--text-soft); }
+  .ch-answer { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .ch-answer.show { display: block; }
+  .plain-line { background: var(--amber-soft); color: var(--amber); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 15px; }
   .section-title { font-size: 13px; font-weight: 600; color: var(--text-faint); margin: 22px 0 10px; text-transform: uppercase; letter-spacing: 0.05em; }
   .day-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
   .day-pick button { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; font-family: inherit; cursor: pointer; color: var(--text-soft); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
@@ -236,6 +241,12 @@
     <div id="libList"></div>
   </section>
 
+  <section class="view" id="view-challenge">
+    <div class="lib-head"><h2>今晚造句 <span class="tag" id="chTag">0/3</span></h2></div>
+    <p class="sub" style="margin-bottom:16px;">用学过的表达写你自己的句子，造过句的词才算真正掌握。</p>
+    <div id="chArea"></div>
+  </section>
+
   <section class="view" id="view-add">
     <div class="lib-head"><h2>添加词条</h2></div>
     <p class="sub" style="margin-bottom:18px;">添加你工作中遇到的生词，效果远好于通用词表。</p>
@@ -269,6 +280,7 @@
 
   <nav>
     <button class="active" data-view="home" onclick="switchView('home')"><span class="ic">◉</span>今日</button>
+    <button data-view="challenge" onclick="switchView('challenge')"><span class="ic">✍︎</span>造句</button>
     <button data-view="lib" onclick="switchView('lib')"><span class="ic">▤</span>词库</button>
     <button data-view="add" onclick="switchView('add')"><span class="ic">＋</span>添加</button>
   </nav>
@@ -523,6 +535,7 @@ let session = null;
 let currentFilter = 'all';
 let qSrc = '';
 let editingId = null;
+let chQ = null;
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function makeCard(w, i){
@@ -747,6 +760,7 @@ function switchView(name){
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
   if(name==='home') renderHome();
+  if(name==='challenge') renderChallenge();
   if(name==='lib') renderLibrary();
   if(name==='add') document.getElementById('fEn').focus();
 }
@@ -769,6 +783,9 @@ function renderHome(){
     btn.disabled=false;
     hint.textContent = `${due.length} 复习${news.length? ' + '+news.length+' 新词':''}`;
     document.getElementById('homeSub').textContent = due.length>0 ? '先复习巩固，再学新词。' : '今天没有到期复习，直接学新词。';
+  }
+  if(h>=19 && todaySentences().length<3){
+    document.getElementById('homeSub').textContent = '晚上了，先清复习，再来 3 道造句题';
   }
   setMode(state.studyMode);
   if(state.streak>0){ document.getElementById('streakBadge').style.display='flex'; document.getElementById('streakNum').textContent=state.streak; }
@@ -830,6 +847,68 @@ function renderMastery(){
   document.getElementById('cLearning').textContent=learning;
   document.getElementById('cFrozen').textContent=frozen;
   document.getElementById('learnCount').textContent=studied+' 个';
+}
+
+/* ============ 造句挑战 ============ */
+function todaySentences(){ return (state.sentences||[]).filter(s=>s.date===todayStr()); }
+function renderChallenge(){
+  const box = document.getElementById('chArea');
+  const done = todaySentences();
+  document.getElementById('chTag').textContent = Math.min(done.length,3)+'/3';
+  if(done.length >= 3){
+    box.innerHTML = `<div class="complete"><div class="check">✓</div><h2>今晚 3 句完成！</h2>
+      <p>句子已存档。攒一周发给 AI 点评，效果最好。</p>
+      <button class="start-btn" onclick="copyWeekSentences()">复制本周句子去点评</button></div>`;
+    return;
+  }
+  const qs = pickChallenges(state.cards, UPGRADE, done.map(s=>s.cardId));
+  if(qs.length===0){
+    box.innerHTML = '<div class="empty"><div class="ic">✍︎</div>还没有可出题的词，先去学今天的新词吧</div>';
+    return;
+  }
+  chQ = qs[0];
+  const c = chQ.card;
+  const prompt = chQ.type==='upgrade'
+    ? `把这句平淡表达升级，用上「<b>${c.en}</b>」：<div class="plain-line">"${chQ.plain}"</div>`
+    : `场景：${c.scene||'工作中'}。用「<b>${c.en}</b>」（${c.zh}）写一句<b>你工作中真实会说的话</b>。`;
+  box.innerHTML = `
+    <div class="card">
+      <span class="scene">${chQ.type==='upgrade'?'表达升级':'场景造句'} · 第 ${done.length+1} 题</span>
+      <div class="prompt" style="font-size:17px">${prompt}</div>
+      <textarea class="ch-input" id="chInput" rows="3" placeholder="写一句完整的英文…" autocapitalize="sentences"></textarea>
+      <div class="ch-answer" id="chAnswer">
+        <div class="en-row"><span class="en">${c.en}</span><button class="speak-btn" onclick="speak('${esc(c.en)}')">🔊</button></div>
+        ${c.example?`<div class="example">范例："${c.example}"</div>`:''}
+        ${c.note?`<div class="note">📌 ${c.note}</div>`:''}
+        <div class="note" style="margin-top:6px">自查：搭配对象对吗？时态自然吗？这句你明天真的会用吗？</div>
+      </div>
+    </div>
+    <button class="check-btn" id="chSubmit" onclick="submitSentence()">提交，对照范例</button>
+    <button class="start-btn" id="chNext" style="display:none;margin-top:12px" onclick="renderChallenge()">下一题 →</button>`;
+}
+function submitSentence(){
+  const txt = document.getElementById('chInput').value.trim();
+  if(!txt){ toast('先写一句再提交'); return; }
+  const c = chQ.card;
+  state.sentences.push({ date:todayStr(), cardId:c.id, en:c.en, type:chQ.type, text:txt });
+  c.produced = (c.produced||0) + 1;
+  save();
+  document.getElementById('chAnswer').classList.add('show');
+  document.getElementById('chInput').disabled = true;
+  document.getElementById('chSubmit').style.display='none';
+  document.getElementById('chNext').style.display='block';
+  document.getElementById('chTag').textContent = Math.min(todaySentences().length,3)+'/3';
+}
+function copyWeekSentences(){
+  const weekAgo = Date.now() - 7*86400000;
+  const list = (state.sentences||[]).filter(s => new Date(s.date).getTime() >= weekAgo);
+  if(list.length===0){ toast('本周还没有句子'); return; }
+  const txt = '这是我本周的商务英语造句练习，请逐句点评：指出不地道或语法有问题的地方，并给出更自然的说法。\n\n' +
+    list.map((s,i)=>`${i+1}. [${s.en}] ${s.text}`).join('\n');
+  const ok = ()=>toast('已复制，去发给 AI 点评吧');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok, ()=>toast('复制失败，请截图或手动复制'));
+  } else { toast('浏览器不支持自动复制'); }
 }
 
 /* ============ 词库 ============ */
