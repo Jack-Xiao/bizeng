@@ -516,20 +516,30 @@ function mergeSeed(){
   const existing = new Set(state.cards.map(c=>c.en));
   let added = 0;
   SEED.forEach((w)=>{
-    if(!existing.has(w.en)){ state.cards.push(makeCard(w, state.cards.length + added)); added++; }
+    if(!existing.has(w.en)){ state.cards.push(makeCard(w, state.cards.length)); added++; }
   });
   return added;
 }
+function adoptState(parsed){
+  // 采用外来 state（本地存档或导入的备份）：升级卡片 + 补齐缺失的顶层字段
+  state = parsed;
+  state.cards.forEach(upgradeCard);
+  state.sentences = state.sentences||[];
+  state.history = state.history||[];
+  state.streak = state.streak||0;
+  state.lastStudyDate = state.lastStudyDate||null;
+  state.currentDay = state.currentDay||1;
+  state.studyMode = state.studyMode||'reveal';
+}
 function load(){
-  // 优先读 v4，没有就从 v3 升级（保留进度，补新字段）
-  const saved = localStorage.getItem(DB_KEY) || localStorage.getItem(DB_KEY_OLD);
-  if(saved){
+  // 依次尝试 v4、v3：逐个 parse + 校验，v4 坏档不挡住完好的 v3 备份
+  for(const key of [DB_KEY, DB_KEY_OLD]){
+    const saved = localStorage.getItem(key);
+    if(!saved) continue;
     try {
       const parsed = JSON.parse(saved);
       if(parsed.cards && parsed.cards.length>0){
-        state = parsed;
-        state.cards.forEach(upgradeCard);
-        state.sentences = state.sentences||[];
+        adoptState(parsed);
         mergeSeed();
         save();
         return;
@@ -855,12 +865,14 @@ function exportData(){
 function importData(e){
   const file=e.target.files[0]; if(!file)return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const data=JSON.parse(r.result); if(!data.cards)throw 0; state=data; save(); toast('导入成功，共 '+data.cards.length+' 条'); renderHome(); }catch(err){ toast('导入失败：文件格式错误'); } };
+  r.onload=()=>{ try{ const data=JSON.parse(r.result); if(!data.cards)throw 0; adoptState(data); save(); toast('导入成功，共 '+data.cards.length+' 条'); renderHome(); }catch(err){ toast('导入失败：文件格式错误'); } };
   r.readAsText(file); e.target.value='';
 }
 function resetData(){
   if(!confirm('确定重置？所有学习进度和自定义词条都会清空，恢复到初始词库。'))return;
-  localStorage.removeItem(DB_KEY); load(); renderHome(); toast('已重置为初始词库');
+  // v3 备份也要删，否则 load() 会把旧进度重新迁回来
+  localStorage.removeItem(DB_KEY); localStorage.removeItem(DB_KEY_OLD);
+  load(); renderHome(); toast('已重置为初始词库');
 }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 
