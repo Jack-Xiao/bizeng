@@ -169,6 +169,13 @@
   .day-pick button.done { background: var(--green-soft); border-color: var(--green); color: var(--green); }
   .day-pick .dp-num { font-weight: 700; font-size: 15px; }
   .day-pick .dp-dot { font-size: 10px; }
+  input, textarea { font-size: 16px !important; }
+  @media (max-width: 480px) {
+    .rating button { min-height: 60px; }
+    .reveal-btn, .check-btn, .start-btn { min-height: 52px; }
+    .view { padding: 16px 14px; }
+    .day-pick button { min-width: 44px; min-height: 44px; }
+  }
 </style>
 </head>
 <body>
