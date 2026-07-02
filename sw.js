@@ -1,4 +1,4 @@
-const CACHE = 'bizeng-v1';
+const CACHE = 'bizeng-v2';
 const ASSETS = ['./', './index.html', './core.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 

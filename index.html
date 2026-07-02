@@ -87,7 +87,7 @@
   .card .en { font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: -0.01em; }
   .speak-btn { background: var(--accent-soft); border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: transform .1s; }
   .speak-btn:active { transform: scale(0.9); }
-  .card .example { font-size: 15px; color: var(--text); margin: 12px 0 8px; font-style: italic; }
+  .card .example { font-size: 15px; color: var(--text); margin: 12px 0 8px; font-style: italic; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
   .card .note { font-size: 12px; color: var(--text-soft); background: var(--bg); border-radius: 8px; padding: 10px 12px; margin-top: 12px; text-align: left; }
 
   .type-input { width: 100%; padding: 14px; border: 2px solid var(--border); border-radius: 12px; font-size: 18px; font-family: inherit; text-align: center; margin-bottom: 12px; background: var(--card); }
@@ -541,7 +541,8 @@ let state = {
   streak: 0,
   lastStudyDate: null,
   currentDay: 1,
-  studyMode: 'reveal',
+  studyMode: 'quiz',
+  quizDefaultApplied: true,
   sentences: []
 };
 let session = null;
@@ -581,7 +582,11 @@ function adoptState(parsed){
   state.streak = state.streak||0;
   state.lastStudyDate = state.lastStudyDate||null;
   state.currentDay = state.currentDay||1;
-  state.studyMode = state.studyMode||'reveal';
+  state.studyMode = state.studyMode||'quiz';
+  if(!state.quizDefaultApplied && state.studyMode==='reveal'){
+    state.studyMode = 'quiz';
+    state.quizDefaultApplied = true;
+  }
 }
 function load(){
   // 依次尝试 v4、v3：逐个 parse + 校验，v4 坏档不挡住完好的 v3 备份
@@ -601,7 +606,7 @@ function load(){
   // 全新用户：灌入种子词库
   state.cards = SEED.map((w,i)=>makeCard(w,i));
   state.history=[]; state.streak=0; state.lastStudyDate=null;
-  state.currentDay=1; state.studyMode='reveal'; state.sentences=[];
+  state.currentDay=1; state.studyMode='quiz'; state.quizDefaultApplied=true; state.sentences=[];
   save();
 }
 function save(){ localStorage.setItem(DB_KEY, JSON.stringify(state)); }
@@ -656,7 +661,7 @@ function renderCard(){
         <div class="judge-hint" id="judgeHint"></div>
         <div class="answer" id="answerBox">
           <div class="en-row"><span class="en">${card.en}</span><button class="speak-btn" onclick="speak('${esc(card.en)}')">🔊</button></div>
-          ${card.example?`<div class="example">"${card.example}"</div>`:''}
+          ${card.example?`<div class="example"><span>"${card.example}"</span><button class="speak-btn" onclick="speak('${esc(card.example)}')" title="播放整句">▶</button></div>`:''}
           ${card.note?`<div class="note">📌 ${card.note}</div>`:''}
         </div>
       </div>
@@ -677,7 +682,7 @@ function renderCard(){
         <div class="reveal-hint">💡 主动回想是记忆的关键——别急着看答案</div>
         <div class="answer">
           <div class="en-row"><span class="en">${card.en}</span><button class="speak-btn" onclick="speak('${esc(card.en)}')">🔊</button></div>
-          ${card.example?`<div class="example">"${card.example}"</div>`:''}
+          ${card.example?`<div class="example"><span>"${card.example}"</span><button class="speak-btn" onclick="speak('${esc(card.example)}')" title="播放整句">▶</button></div>`:''}
           ${card.note?`<div class="note">📌 ${card.note}</div>`:''}
         </div>
       </div>
@@ -759,7 +764,13 @@ function speak(text){
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang='en-US'; u.rate=0.92;
+  const voices = speechSynthesis.getVoices();
+  const voice = voices.find(v=>/^en[-_]/i.test(v.lang) && /US|United States|Samantha|Alex/i.test(v.name+' '+v.lang))
+    || voices.find(v=>/^en[-_]/i.test(v.lang));
+  if(voice) u.voice = voice;
+  u.onerror = () => toast('发音失败，请再点一次或检查系统语音');
   speechSynthesis.speak(u);
+  if(speechSynthesis.paused) speechSynthesis.resume();
 }
 
 /* ============ 视图 / 模式 ============ */
@@ -891,7 +902,7 @@ function renderChallenge(){
       <textarea class="ch-input" id="chInput" rows="3" placeholder="写一句完整的英文…" autocapitalize="sentences"></textarea>
       <div class="ch-answer" id="chAnswer">
         <div class="en-row"><span class="en">${c.en}</span><button class="speak-btn" onclick="speak('${esc(c.en)}')">🔊</button></div>
-        ${c.example?`<div class="example">范例："${c.example}"</div>`:''}
+        ${c.example?`<div class="example"><span>范例："${c.example}"</span><button class="speak-btn" onclick="speak('${esc(c.example)}')" title="播放整句">▶</button></div>`:''}
         ${c.note?`<div class="note">📌 ${c.note}</div>`:''}
         <div class="note" style="margin-top:6px">自查：搭配对象对吗？时态自然吗？这句你明天真的会用吗？</div>
       </div>
@@ -1048,7 +1059,13 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 /* ============ 启动 ============ */
 load(); renderHome();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  navigator.serviceWorker.register('./sw.js');
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(()=>{});
 }
 </script>
 </body>
