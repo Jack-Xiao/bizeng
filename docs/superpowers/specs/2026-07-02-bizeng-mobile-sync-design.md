@@ -1,7 +1,7 @@
 # BizEng 升级版设计：手机优先 + 云同步 + 输出训练
 
 日期：2026-07-02
-状态：已确认（用户批准）
+状态：Phase 1 代码已交付；GitHub Pages 已构建；线上 PWA 安装受账号级自定义域 HTTPS 证书阻塞
 
 ## 背景与目标
 
@@ -109,6 +109,12 @@ Supabase 免费表 = 同步层（有网时后台自动推/拉）
 4. 造句挑战（场景造句 + 表达升级两种题型）+ 句子存档 + 一键复制
 5. 新掌握标准与渐进毕业规则
 6. Mac 现有进度：用现有导出/导入 JSON 搬一次家
+
+Phase 1 交付记录（2026-07-02）：
+- 已完成：PWA 文件、手机布局、快速收件箱、来源标签、个人词优先入队、造句挑战、表达升级、句子存档、每周复制、产出优先掌握规则。
+- 已验证：本地 Chrome 端到端流程通过；`node --test` 通过；本地 HTTP 下 manifest / service worker / icons 可访问。
+- 已部署：`https://github.com/Jack-Xiao/bizeng`，GitHub Pages build 成功，Pages API 返回 `status=built`。
+- 未完成的部署验证：账号级 `jack-xiao.github.io` 仓库设置了 `CNAME=tianyejia.net`，项目页被重定向到 `http://tianyejia.net/bizeng/`；GitHub 当前无法开启 HTTPS，返回 `The certificate does not exist yet`。手机主屏幕/PWA 离线需要 HTTPS，需先修复该自定义域 DNS/证书，或临时移除账号级 CNAME 后再验证线上 PWA。
 
 **Phase 2（跑顺后再做）**
 1. Supabase 云同步（security-definer RPC 方案，经已连接的 Supabase MCP 建表建函数）
