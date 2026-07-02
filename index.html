@@ -481,17 +481,19 @@ const SEED = [
 ];
 
 /* ============ 状态管理 ============
-   v3：词库扩到 30 天/180 词。load() 做"合并升级"——
-   保留用户已学进度（reps/due/ef/lapse），只补入新增的词。 */
-const DB_KEY = 'bizEng.v3';
-const DB_KEY_OLD = 'bizEng.v2';
+   v4：新增生产字段（produced/usedReal/inbox/source）和 sentences 数组。
+   load() 做"合并升级"——保留用户已学进度（reps/due/ef/lapse），
+   补齐新字段，只补入新增的词。 */
+const DB_KEY = 'bizEng.v4';
+const DB_KEY_OLD = 'bizEng.v3';
 let state = {
   cards: [],
   history: [],
   streak: 0,
   lastStudyDate: null,
   currentDay: 1,
-  studyMode: 'reveal'
+  studyMode: 'reveal',
+  sentences: []
 };
 let session = null;
 let currentFilter = 'all';
@@ -500,67 +502,44 @@ function todayStr(){ return new Date().toISOString().slice(0,10); }
 function makeCard(w, i){
   return { id:'s'+i, en:w.en, zh:w.zh, scene:w.scene, day:w.day, topic:w.topic,
     example:w.example, note:w.note, createdAt:Date.now()-i*1000,
-    reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0 };
+    reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0,
+    produced:0, usedReal:0, inbox:false, source:'' };
+}
+function upgradeCard(c){
+  // v3 卡片没有生产字段 → 补默认值（不动已有进度）
+  c.produced = c.produced||0; c.usedReal = c.usedReal||0;
+  c.inbox = c.inbox||false; c.source = c.source||'';
+  return c;
+}
+function mergeSeed(){
+  // SEED 里有但存档里没有的词 → 补进去（版本升级时）
+  const existing = new Set(state.cards.map(c=>c.en));
+  let added = 0;
+  SEED.forEach((w)=>{
+    if(!existing.has(w.en)){ state.cards.push(makeCard(w, state.cards.length + added)); added++; }
+  });
+  return added;
 }
 function load(){
-  // 优先读 v3
-  let saved = localStorage.getItem(DB_KEY);
-  // 没有 v3 就尝试从 v2 迁移（保留进度）
-  if(!saved){
-    const old = localStorage.getItem(DB_KEY_OLD);
-    if(old){
-      try {
-        const oldState = JSON.parse(old);
-        // 用 SEED 重建卡片，但保留旧存档里的学习进度
-        const oldMap = {};
-        (oldState.cards||[]).forEach(c => { oldMap[c.en] = c; });
-        state.cards = SEED.map((w,i)=>{
-          const fresh = makeCard(w,i);
-          const old = oldMap[w.en];
-          if(old){
-            // 保留进度字段，其余用新数据（防止 day/topic 等元信息过期）
-            return Object.assign(fresh, {
-              reps: old.reps||0, ef: old.ef||2.5, interval: old.interval||0,
-              due: old.due||null, lastReviewed: old.lastReviewed||null, lapse: old.lapse||0
-            });
-          }
-          return fresh;  // 新词，从未学过
-        });
-        state.history = oldState.history||[];
-        state.streak = oldState.streak||0;
-        state.lastStudyDate = oldState.lastStudyDate||null;
-        state.currentDay = oldState.currentDay||1;
-        state.studyMode = oldState.studyMode||'reveal';
+  // 优先读 v4，没有就从 v3 升级（保留进度，补新字段）
+  const saved = localStorage.getItem(DB_KEY) || localStorage.getItem(DB_KEY_OLD);
+  if(saved){
+    try {
+      const parsed = JSON.parse(saved);
+      if(parsed.cards && parsed.cards.length>0){
+        state = parsed;
+        state.cards.forEach(upgradeCard);
+        state.sentences = state.sentences||[];
+        mergeSeed();
         save();
         return;
-      } catch(e){}
-    }
-    // 全新用户：灌入种子词库
-    state.cards = SEED.map((w,i)=>makeCard(w,i));
-    state.history=[]; state.streak=0; state.lastStudyDate=null; state.currentDay=1; state.studyMode='reveal';
-    save();
-    return;
+      }
+    } catch(e){}
   }
-  // 已有 v3：直接读，但补入可能新增的词（版本升级时）
-  try {
-    const parsed = JSON.parse(saved);
-    if(parsed.cards && parsed.cards.length>0){
-      state = parsed;
-      // 合并：SEED 里有但存档里没有的词 → 补进去
-      const existing = new Set(state.cards.map(c=>c.en));
-      let added = 0;
-      SEED.forEach((w,i)=>{
-        if(!existing.has(w.en)){
-          state.cards.push(makeCard(w, state.cards.length + added));
-          added++;
-        }
-      });
-      if(added>0) save();
-      return;
-    }
-  } catch(e){}
-  // 兜底
+  // 全新用户：灌入种子词库
   state.cards = SEED.map((w,i)=>makeCard(w,i));
+  state.history=[]; state.streak=0; state.lastStudyDate=null;
+  state.currentDay=1; state.studyMode='reveal'; state.sentences=[];
   save();
 }
 function save(){ localStorage.setItem(DB_KEY, JSON.stringify(state)); }
@@ -861,7 +840,8 @@ function addWord(){
     day:0, topic:'自定义',
     example:document.getElementById('fExample').value.trim(),
     note:document.getElementById('fNote').value.trim(),
-    createdAt:Date.now(), reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0
+    createdAt:Date.now(), reps:0, ef:2.5, interval:0, due:null, lastReviewed:null, lapse:0,
+    produced:0, usedReal:0, inbox:false, source:''
   });
   save();
   ['fEn','fZh','fScene','fExample','fNote'].forEach(id=>document.getElementById(id).value='');
