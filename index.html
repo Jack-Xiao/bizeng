@@ -150,7 +150,7 @@
   .settings-row button { flex: 1; padding: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; font-family: inherit; cursor: pointer; color: var(--text-soft); }
   .quick-add { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .quick-add h3 { font-size: 15px; margin-bottom: 2px; }
-  .quick-add .qa-sub { font-size: 12px; color: var(--text-faint); margin-bottom: 10px; }
+  .qa-sub { font-size: 12px; color: var(--text-faint); margin-bottom: 10px; }
   .quick-add input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 16px; font-family: inherit; margin-bottom: 10px; }
   .src-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .src-row button { border: 1px solid var(--border); background: var(--bg); border-radius: 20px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text-soft); }
@@ -161,6 +161,12 @@
   .ch-answer { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
   .ch-answer.show { display: block; }
   .plain-line { background: var(--amber-soft); color: var(--amber); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 15px; }
+  .privacy-note { font-size: 12px; color: var(--text-soft); background: var(--green-soft); border-radius: 8px; padding: 9px 11px; margin: 10px 0 14px; text-align: left; }
+  .transfer-select { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; margin: 2px 0 10px; }
+  .transfer-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .transfer-grid button { border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 10px 8px; color: var(--text-soft); font: inherit; font-size: 13px; cursor: pointer; }
+  .transfer-grid button:first-child { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+  .transfer-summary { font-size: 12px; color: var(--text-faint); margin-top: 9px; }
   .section-title { font-size: 13px; font-weight: 600; color: var(--text-faint); margin: 22px 0 10px; text-transform: uppercase; letter-spacing: 0.05em; }
   .day-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
   .day-pick button { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; font-family: inherit; cursor: pointer; color: var(--text-soft); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
@@ -206,6 +212,18 @@
       <div class="stat review"><div class="num" id="sDue">0</div><div class="lbl">待复习</div></div>
       <div class="stat new"><div class="num" id="sNew">0</div><div class="lbl">今日新词</div></div>
       <div class="stat learned"><div class="num" id="sTotal">0</div><div class="lbl">已学词条</div></div>
+    </div>
+    <div class="panel" id="transferPanel">
+      <h3>匿名工作复盘 <span class="tag">不记录工作内容</span></h3>
+      <p class="qa-sub">只选择表达和调用结果，帮助系统安排下一次练习。</p>
+      <select class="transfer-select" id="transferCard" aria-label="选择今天尝试使用的表达"></select>
+      <div class="transfer-grid">
+        <button onclick="recordTransfer('independent')">独立说出</button>
+        <button onclick="recordTransfer('prompted')">提示后想起</button>
+        <button onclick="recordTransfer('thought')">想到但没说</button>
+        <button onclick="recordTransfer('missed')">当时没想起</button>
+      </div>
+      <div class="transfer-summary" id="transferSummary"></div>
     </div>
     <div class="panel">
       <h3>30 天课表 <span class="tag" id="curTag">Day 1</span></h3>
@@ -256,7 +274,7 @@
 
   <section class="view" id="view-challenge">
     <div class="lib-head"><h2>今晚造句 <span class="tag" id="chTag">0/3</span></h2></div>
-    <p class="sub" style="margin-bottom:16px;">用学过的表达写你自己的句子，造过句的词才算真正掌握。</p>
+    <p class="sub" style="margin-bottom:16px;">练习匿名的沟通意图，不写公司、项目、客户或真实数据。</p>
     <div id="chArea"></div>
   </section>
 
@@ -543,7 +561,8 @@ let state = {
   currentDay: 1,
   studyMode: 'quiz',
   quizDefaultApplied: true,
-  sentences: []
+  sentences: [],
+  transfers: []
 };
 let session = null;
 let currentFilter = 'all';
@@ -551,7 +570,8 @@ let qSrc = '';
 let editingId = null;
 let chQ = null;
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){ return localDateKey(); }
+function yesterdayStr(){ const d=new Date(); d.setDate(d.getDate()-1); return localDateKey(d); }
 function makeCard(w, i){
   return { id:'s'+i, en:w.en, zh:w.zh, scene:w.scene, day:w.day, topic:w.topic,
     example:w.example, note:w.note, createdAt:Date.now()-i*1000,
@@ -560,8 +580,18 @@ function makeCard(w, i){
 }
 function upgradeCard(c){
   // v3 卡片没有生产字段 → 补默认值（不动已有进度）
+  c.zh = typeof c.zh==='string' ? c.zh : '';
+  c.scene = typeof c.scene==='string' ? c.scene : '';
+  c.topic = typeof c.topic==='string' ? c.topic : '';
+  c.example = typeof c.example==='string' ? c.example : '';
+  c.note = typeof c.note==='string' ? c.note : '';
+  c.reps = Number.isFinite(c.reps) ? c.reps : 0; c.ef = Number.isFinite(c.ef) ? c.ef : 2.5;
+  c.interval = Number.isFinite(c.interval) ? c.interval : 0; c.lapse = Number.isFinite(c.lapse) ? c.lapse : 0;
+  c.due = c.due===null || Number.isFinite(c.due) ? c.due : null;
   c.produced = c.produced||0; c.usedReal = c.usedReal||0;
   c.inbox = c.inbox||false; c.source = c.source||'';
+  c.transferAttempts = c.transferAttempts||0; c.promptedUses = c.promptedUses||0;
+  c.thoughtNotSaid = c.thoughtNotSaid||0; c.missedUses = c.missedUses||0;
   return c;
 }
 function mergeSeed(){
@@ -578,6 +608,7 @@ function adoptState(parsed){
   state = parsed;
   state.cards.forEach(upgradeCard);
   state.sentences = state.sentences||[];
+  state.transfers = state.transfers||[];
   state.history = state.history||[];
   state.streak = state.streak||0;
   state.lastStudyDate = state.lastStudyDate||null;
@@ -595,7 +626,7 @@ function load(){
     if(!saved) continue;
     try {
       const parsed = JSON.parse(saved);
-      if(parsed.cards && parsed.cards.length>0){
+      if(isValidImportedState(parsed)){
         adoptState(parsed);
         mergeSeed();
         save();
@@ -606,7 +637,7 @@ function load(){
   // 全新用户：灌入种子词库
   state.cards = SEED.map((w,i)=>makeCard(w,i));
   state.history=[]; state.streak=0; state.lastStudyDate=null;
-  state.currentDay=1; state.studyMode='quiz'; state.quizDefaultApplied=true; state.sentences=[];
+  state.currentDay=1; state.studyMode='quiz'; state.quizDefaultApplied=true; state.sentences=[]; state.transfers=[];
   save();
 }
 function save(){ localStorage.setItem(DB_KEY, JSON.stringify(state)); }
@@ -650,19 +681,24 @@ function renderCard(){
   document.getElementById('studyModeTag').textContent = state.studyMode==='quiz' ? '默写模式' : '回想模式';
   const newTag = isNew(card) ? ' · 新词' : ' · 复习';
   const quiz = state.studyMode === 'quiz';
+  const scene = escapeHTML(card.scene || '通用');
+  const zh = escapeHTML(card.zh);
+  const en = escapeHTML(card.en);
+  const example = escapeHTML(card.example);
+  const note = escapeHTML(card.note);
 
   if(quiz){
     area.innerHTML = `
       <div class="card" id="cardEl">
-        <span class="scene">${card.scene || '通用'}${newTag}${card.day? ' · Day '+card.day:''}</span>
-        <div class="prompt">${card.zh}</div>
+        <span class="scene">${scene}${newTag}${card.day? ' · Day '+Number(card.day):''}</span>
+        <div class="prompt">${zh}</div>
         <div class="prompt-sub">打出英文表达（动词短语/搭配）</div>
         <input class="type-input" id="typeInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="在这里输入英文…" onkeydown="if(event.key==='Enter')checkTyped()">
         <div class="judge-hint" id="judgeHint"></div>
         <div class="answer" id="answerBox">
-          <div class="en-row"><span class="en">${card.en}</span><button class="speak-btn" onclick="speak('${esc(card.en)}')">🔊</button></div>
-          ${card.example?`<div class="example"><span>"${card.example}"</span><button class="speak-btn" onclick="speak('${esc(card.example)}')" title="播放整句">▶</button></div>`:''}
-          ${card.note?`<div class="note">📌 ${card.note}</div>`:''}
+          <div class="en-row"><span class="en">${en}</span>${speechButton(card.en, '🔊')}</div>
+          ${card.example?`<div class="example"><span>"${example}"</span>${speechButton(card.example, '▶', '播放整句')}</div>`:''}
+          ${card.note?`<div class="note">📌 ${note}</div>`:''}
         </div>
       </div>
       <button class="check-btn" id="checkBtn" onclick="checkTyped()">对照答案</button>
@@ -676,14 +712,14 @@ function renderCard(){
   } else {
     area.innerHTML = `
       <div class="card" id="cardEl">
-        <span class="scene">${card.scene || '通用'}${newTag}${card.day? ' · Day '+card.day:''}</span>
-        <div class="prompt">${card.zh}</div>
+        <span class="scene">${scene}${newTag}${card.day? ' · Day '+Number(card.day):''}</span>
+        <div class="prompt">${zh}</div>
         <div class="prompt-sub">先在心里想英文怎么说，再点"显示答案"</div>
         <div class="reveal-hint">💡 主动回想是记忆的关键——别急着看答案</div>
         <div class="answer">
-          <div class="en-row"><span class="en">${card.en}</span><button class="speak-btn" onclick="speak('${esc(card.en)}')">🔊</button></div>
-          ${card.example?`<div class="example"><span>"${card.example}"</span><button class="speak-btn" onclick="speak('${esc(card.example)}')" title="播放整句">▶</button></div>`:''}
-          ${card.note?`<div class="note">📌 ${card.note}</div>`:''}
+          <div class="en-row"><span class="en">${en}</span>${speechButton(card.en, '🔊')}</div>
+          ${card.example?`<div class="example"><span>"${example}"</span>${speechButton(card.example, '▶', '播放整句')}</div>`:''}
+          ${card.note?`<div class="note">📌 ${note}</div>`:''}
         </div>
       </div>
       <button class="reveal-btn" id="revealBtn" onclick="reveal()">显示答案</button>
@@ -695,7 +731,9 @@ function renderCard(){
       </div>`;
   }
 }
-function esc(s){ return s.replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+function speechButton(text, label, title){
+  return `<button class="speak-btn" data-speak="${escapeHTML(text)}"${title?` title="${escapeHTML(title)}"`:''}>${label}</button>`;
+}
 function reveal(){
   document.getElementById('cardEl').classList.add('revealed');
   document.getElementById('revealBtn').style.display='none';
@@ -732,7 +770,7 @@ function rate(quality){
   const t = todayStr();
   state.history.push({ date:t, id:card.id, kind: wasNew?'new':'review', q:quality });
   if(state.lastStudyDate !== t){
-    const y = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const y = yesterdayStr();
     state.streak = (state.lastStudyDate === y) ? state.streak+1 : 1;
     state.lastStudyDate = t;
   }
@@ -816,7 +854,7 @@ function renderHome(){
   else document.getElementById('streakBadge').style.display='none';
   const inboxN = state.cards.filter(c=>c.inbox).length;
   if(inboxN>0) document.getElementById('homeSub').textContent += `　收件箱 ${inboxN} 条待补全`;
-  renderDayCard(); renderHeatmap(); renderMastery(); renderDayPick();
+  renderDayCard(); renderHeatmap(); renderMastery(); renderDayPick(); renderTransferPanel();
 }
 function renderDayCard(){
   const day = state.currentDay;
@@ -849,7 +887,7 @@ function renderDayPick(){
 function renderHeatmap(){
   const box=document.getElementById('heatmap'); box.innerHTML='';
   for(let i=13;i>=0;i--){
-    const ds=new Date(Date.now()-i*86400000).toISOString().slice(0,10);
+    const d=new Date(); d.setDate(d.getDate()-i); const ds=localDateKey(d);
     const cnt=state.history.filter(h=>h.date===ds).length;
     const el=document.createElement('div'); el.className='d';
     let lvl=0; if(cnt>0)lvl=1; if(cnt>=6)lvl=2; if(cnt>=12)lvl=3; if(cnt>=20)lvl=4;
@@ -873,7 +911,51 @@ function renderMastery(){
   document.getElementById('learnCount').textContent=studied+' 个';
 }
 
+const TRANSFER_LABELS = {
+  independent:'独立说出', prompted:'提示后想起', thought:'想到但没说', missed:'当时没想起'
+};
+function renderTransferPanel(){
+  const select=document.getElementById('transferCard');
+  const learned=state.cards.filter(c=>!isNew(c)).sort((a,b)=>(b.lastReviewed||0)-(a.lastReviewed||0));
+  const previous=select.value;
+  select.innerHTML='';
+  if(learned.length===0){
+    const option=document.createElement('option'); option.textContent='先学习一个表达'; option.value=''; select.appendChild(option);
+    document.querySelectorAll('.transfer-grid button').forEach(b=>b.disabled=true);
+  } else {
+    learned.forEach(c=>{
+      const option=document.createElement('option'); option.value=c.id;
+      option.textContent=`${c.en} · ${c.zh}`; select.appendChild(option);
+    });
+    if(learned.some(c=>c.id===previous)) select.value=previous;
+    document.querySelectorAll('.transfer-grid button').forEach(b=>b.disabled=false);
+  }
+  const today=(state.transfers||[]).filter(x=>x.date===todayStr());
+  const independent=today.filter(x=>x.result==='independent').length;
+  document.getElementById('transferSummary').textContent = today.length
+    ? `今天已记录 ${today.length} 次，其中独立说出 ${independent} 次。`
+    : '今天还没有记录；只记结果，不记任何工作内容。';
+}
+function recordTransfer(result){
+  if(!TRANSFER_LABELS[result]) return;
+  const id=document.getElementById('transferCard').value;
+  const card=state.cards.find(c=>c.id===id); if(!card){ toast('先选择一个已学表达'); return; }
+  applyTransferResult(card, result);
+  state.transfers.push({ date:todayStr(), cardId:card.id, result, at:Date.now() });
+  save();
+  toast(`已记录：${card.en} · ${TRANSFER_LABELS[result]}`);
+  renderHome();
+}
+
 /* ============ 造句挑战 ============ */
+function scenarioFor(card){
+  const specific=COMMUNICATION_SCENARIOS[card.en];
+  if(specific) return { intent:specific[0], prompt:specific[1] };
+  return {
+    intent:card.scene||'工作沟通',
+    prompt:`在一个虚构的${card.scene||'工作'}情境中，需要表达“${card.zh}”。写一句不含真实公司、项目、客户或数据的话。`
+  };
+}
 function todaySentences(){ return (state.sentences||[]).filter(s=>s.date===todayStr()); }
 function renderChallenge(){
   const box = document.getElementById('chArea');
@@ -892,18 +974,19 @@ function renderChallenge(){
   }
   chQ = qs[0];
   const c = chQ.card;
+  const scenario = scenarioFor(c);
   const prompt = chQ.type==='upgrade'
-    ? `把这句平淡表达升级，用上「<b>${c.en}</b>」：<div class="plain-line">"${chQ.plain}"</div>`
-    : `场景：${c.scene||'工作中'}。用「<b>${c.en}</b>」（${c.zh}）写一句<b>你工作中真实会说的话</b>。`;
+    ? `把这句平淡表达升级，用上「<b>${escapeHTML(c.en)}</b>」：<div class="plain-line">"${escapeHTML(chQ.plain)}"</div>`
+    : `${escapeHTML(scenario.prompt)}<div class="privacy-note">训练意图：${escapeHTML(scenario.intent)}。请使用虚构信息，不要输入真实工作内容。</div>用上「<b>${escapeHTML(c.en)}</b>」（${escapeHTML(c.zh)}）。`;
   box.innerHTML = `
     <div class="card">
       <span class="scene">${chQ.type==='upgrade'?'表达升级':'场景造句'} · 第 ${done.length+1} 题</span>
       <div class="prompt" style="font-size:17px">${prompt}</div>
       <textarea class="ch-input" id="chInput" rows="3" placeholder="写一句完整的英文…" autocapitalize="sentences"></textarea>
       <div class="ch-answer" id="chAnswer">
-        <div class="en-row"><span class="en">${c.en}</span><button class="speak-btn" onclick="speak('${esc(c.en)}')">🔊</button></div>
-        ${c.example?`<div class="example"><span>范例："${c.example}"</span><button class="speak-btn" onclick="speak('${esc(c.example)}')" title="播放整句">▶</button></div>`:''}
-        ${c.note?`<div class="note">📌 ${c.note}</div>`:''}
+        <div class="en-row"><span class="en">${escapeHTML(c.en)}</span>${speechButton(c.en, '🔊')}</div>
+        ${c.example?`<div class="example"><span>范例："${escapeHTML(c.example)}"</span>${speechButton(c.example, '▶', '播放整句')}</div>`:''}
+        ${c.note?`<div class="note">📌 ${escapeHTML(c.note)}</div>`:''}
         <div class="note" style="margin-top:6px">自查：搭配对象对吗？时态自然吗？这句你明天真的会用吗？</div>
       </div>
     </div>
@@ -962,17 +1045,11 @@ function renderLibrary(){
     else if(isDue(c))pill='<span class="pill due">待复习</span>';
     else pill='<span class="pill mastered">复习中</span>';
     const dueInfo=isNew(c)?'':(isDue(c)?'<span>🔴 今天</span>':'<span>'+daysUntil(c.due)+'天后</span>');
-    const useBtn = c.inbox
-      ? `<button class="use-btn" onclick="editCard('${c.id}')">补全</button>`
-      : ((!isNew(c) && !isMastered(c)) ? `<button class="use-btn" onclick="markUsed('${c.id}')">✓ 实战用过</button>` : '');
-    return `<div class="word-item"><div class="top"><span class="en">${c.en}</span><span class="zh">${c.zh||'（待补全）'}</span></div><div class="meta">${pill}${c.scene?'<span>'+c.scene+'</span>':''}${c.day?'<span>Day '+c.day+'</span>':''}${dueInfo}<span>复习 ${c.reps} 次</span>${useBtn}</div></div>`;
+    const action = c.inbox
+      ? `<button class="use-btn" data-edit="${escapeHTML(c.id)}">补全</button>`
+      : ((c.transferAttempts||0)>0 ? `<span>工作调用 ${Number(c.transferAttempts)||0} 次</span>` : '');
+    return `<div class="word-item"><div class="top"><span class="en">${escapeHTML(c.en)}</span><span class="zh">${escapeHTML(c.zh||'（待补全）')}</span></div><div class="meta">${pill}${c.scene?'<span>'+escapeHTML(c.scene)+'</span>':''}${c.day?'<span>Day '+Number(c.day)+'</span>':''}${dueInfo}<span>复习 ${Number(c.reps)||0} 次</span>${action}</div></div>`;
   }).join('');
-}
-function markUsed(id){
-  const c = state.cards.find(x=>x.id===id); if(!c) return;
-  applyRealUse(c); save();
-  toast(c.usedReal>=2 ? '第 2 次实战，已掌握' : '很好！复习间隔已拉长');
-  renderLibrary();
 }
 function daysUntil(ts){ const d=Math.ceil((ts-Date.now())/86400000); return d<=0?'今天':d; }
 
@@ -1045,7 +1122,7 @@ function exportData(){
 function importData(e){
   const file=e.target.files[0]; if(!file)return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const data=JSON.parse(r.result); if(!data.cards)throw 0; adoptState(data); mergeSeed(); save(); toast('导入成功，共 '+state.cards.length+' 条'); renderHome(); }catch(err){ toast('导入失败：文件格式错误'); } };
+  r.onload=()=>{ try{ const data=JSON.parse(r.result); if(!isValidImportedState(data))throw 0; adoptState(data); mergeSeed(); save(); toast('导入成功，共 '+state.cards.length+' 条'); renderHome(); }catch(err){ toast('导入失败：文件格式错误'); } };
   r.readAsText(file); e.target.value='';
 }
 function resetData(){
@@ -1057,6 +1134,12 @@ function resetData(){
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 
 /* ============ 启动 ============ */
+document.addEventListener('click', event=>{
+  const speakTarget=event.target.closest('[data-speak]');
+  if(speakTarget){ speak(speakTarget.dataset.speak); return; }
+  const editTarget=event.target.closest('[data-edit]');
+  if(editTarget) editCard(editTarget.dataset.edit);
+});
 load(); renderHome();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   let refreshing = false;
